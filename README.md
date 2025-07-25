@@ -33,7 +33,7 @@ source .venv/bin/activate # Linux
 ```
 pip install -r requirements.txt
 ```
-4. Download [dataset](https://www.kaggle.com/datasets/brycehopkins/flame-3-computer-vision-subset-sycan-marsh)
+4. Download [Flame 3 dataset](https://www.kaggle.com/datasets/brycehopkins/flame-3-computer-vision-subset-sycan-marsh)
 
 ## Dataset Preparation
 Organise your dataset in the following structure:
