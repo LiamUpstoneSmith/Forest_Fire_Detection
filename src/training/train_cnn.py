@@ -9,8 +9,12 @@ from src.config import configs
 
 def train_cnn(model):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch._dynamo.config.suppress_errors = True
+    torch._dynamo.config.disable = True
+
     model = model.to(device)
 
+    print("Generating Dataset...")
     data_module = ThermalDataset(
         raw_data_dir=config.get("data_dir"),
         processed_dir=config.get("processed_dir"),
@@ -26,105 +30,96 @@ def train_cnn(model):
     lr = config.get("lr")
     max_grad_norm = config.get("max_grad_norm")
 
-    # Calculate positive class weight once
-    train_targets = train_dataloader.dataset.targets
+    # Temporary classifier for training
+    classifier_head = nn.Linear(512, 1).to(device)
+
+    # Class imbalance handling
+    train_labels = [label for _, label in train_dataloader.dataset]
     class_counts = [
-        np.sum(np.array(train_targets) == 0),  # no_fire
-        np.sum(np.array(train_targets) == 1)   # fire
+        train_labels.count(0),  # no_fire
+        train_labels.count(1)   # fire
     ]
     pos_weight = torch.tensor(
         [class_counts[0] / max(1, class_counts[1])]
     ).to(device)
 
-    # Loss, optimizer, scheduler
+    # Loss & optimizer
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(list(model.parameters()) + list(classifier_head.parameters()), lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='max', factor=0.5, patience=3
     )
 
-    # AMP scaler
     scaler = torch.cuda.amp.GradScaler()
 
-    train_losses, val_losses, val_accuracies = [], [], []
-    best_val_acc, best_model_state = 0.0, None
-
-
+    best_val_acc = 0.0
+    best_model_state = None
 
     for epoch in range(num_epochs):
         model.train()
+        classifier_head.train()
+
         running_loss, correct, total = 0.0, 0, 0
-        progress_bar = tqdm(
-            train_dataloader, desc=f'Epoch {epoch+1}/{num_epochs} [Train]', leave=True
-        )
+        progress_bar = tqdm(train_dataloader, desc=f'Epoch {epoch+1}/{num_epochs} [Train]')
 
         for images, labels in progress_bar:
-            images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True).float()
+            images, labels = images.to(device), labels.to(device).float()
 
             optimizer.zero_grad()
 
             with torch.cuda.amp.autocast():
-                outputs = model(images)
-                loss = criterion(outputs.squeeze(), labels)
+                features = model(images)  # [B, feature_dim]
+                outputs = classifier_head(features).squeeze()
+                loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(list(model.parameters()) + list(classifier_head.parameters()), max_grad_norm)
             scaler.step(optimizer)
             scaler.update()
 
             running_loss += loss.item() * images.size(0)
-            preds = torch.sigmoid(outputs) > 0.5
-            correct += (preds.squeeze() == labels).sum().item()
+            preds = (torch.sigmoid(outputs) > 0.5).long()
+            correct += (preds == labels.long()).sum().item()
             total += labels.size(0)
-            train_acc = correct / total
 
-            progress_bar.set_postfix(loss=loss.item(), acc=train_acc)
+            progress_bar.set_postfix(loss=loss.item(), acc=correct / total)
 
         epoch_loss = running_loss / len(train_dataloader.dataset)
-        train_losses.append(epoch_loss)
-        epoch_train_acc = correct / total
+        train_acc = correct / total
 
-        # Validation each epoch
-        val_loss, val_acc = validate_model(model, val_dataloader, criterion, device)
-        val_losses.append(val_loss)
-        val_accuracies.append(val_acc)
-
+        val_loss, val_acc = validate_model(model, classifier_head, val_dataloader, criterion, device)
         scheduler.step(val_acc)
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_model_state = model.state_dict().copy()
 
-    # Save best model
+    # Save only the feature extractor (not the classifier)
     if best_model_state:
-        torch.save(best_model_state, '../saved/features/CNN_best_model_weights.pth')
+        torch.save(best_model_state, config.get("save_FE_path"))
         model.load_state_dict(best_model_state)
 
     return model
 
-def validate_model(model, val_dataloader, criterion, device):
+def validate_model(model, classifier_head, dataloader, criterion, device):
     model.eval()
-    running_loss, correct, total = 0.0, 0, 0
+    classifier_head.eval()
 
+    running_loss, correct, total = 0.0, 0, 0
     with torch.no_grad():
-        for images, labels in val_dataloader:
-            images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True).float()
+        for images, labels in dataloader:
+            images, labels = images.to(device), labels.to(device).float()
             with torch.cuda.amp.autocast():
-                outputs = model(images)
-                loss = criterion(outputs.squeeze(), labels)
+                features = model(images)
+                outputs = classifier_head(features).squeeze()
+                loss = criterion(outputs, labels)
 
             running_loss += loss.item() * images.size(0)
-            preds = torch.sigmoid(outputs) > 0.5
-            correct += (preds.squeeze() == labels).sum().item()
+            preds = (torch.sigmoid(outputs) > 0.5).long()
+            correct += (preds == labels.long()).sum().item()
             total += labels.size(0)
 
-    if total == 0:
-        return 0, 0
     return running_loss / total, correct / total
-
-def save_feature_extractor_cnn(model, path):
-    state_dict = model.state_dict()
-    torch.save(state_dict, path)
 
 if __name__ == "__main__":
     # Clear GPU memory cache to prevent out-of-memory errors
@@ -138,9 +133,6 @@ if __name__ == "__main__":
 
     # Train model
     trained_model = train_cnn(model)
-
-    # Save model
-    save_feature_extractor_cnn(trained_model, config.get("save_FE_path"))
 
     print("Finished")
 

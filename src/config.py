@@ -23,6 +23,7 @@ def configs(model):
         "num_epochs":15,
         "lr": 1e-4,
         "max_grad_norm": 0.1,
+        "dropout_rate": 0.3,
 
         # Data
         "data_dir": "../../dataset/raw/thermal",

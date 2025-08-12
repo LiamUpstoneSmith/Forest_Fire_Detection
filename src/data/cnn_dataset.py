@@ -20,6 +20,10 @@ class ProcessedThermalDataset(Dataset):
     def __getitem__(self, idx):
         return self.dataset[idx]
 
+    @property
+    def targets(self):
+        return self.dataset.targets
+
 class ThermalPreprocessor:
     """Handles processing & saving augmented images with GPU acceleration."""
     def __init__(self,

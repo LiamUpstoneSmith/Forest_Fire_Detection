@@ -3,7 +3,7 @@ import torch.nn as nn
 from torchvision import models
 
 class CNN(nn.Module):
-    def __init__(self, feature_dim=1280):
+    def __init__(self, config, feature_dim=1280):
         super(CNN, self).__init__()
         self.base_model = models.mobilenet_v2(weights='IMAGENET1K_V1')
 
@@ -30,11 +30,10 @@ class CNN(nn.Module):
             nn.Flatten()
         )
 
-        # Optional feature refinement
         self.feature_refiner = nn.Sequential(
             nn.Linear(feature_dim, 512),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.3)
+            nn.Dropout(config.get("dropout_rate"))
         )
 
     def forward(self, x, raw=False):
