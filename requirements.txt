@@ -1,11 +1,7 @@
-torch
-torchvision
+torch>=1.12
+torchvision>=0.13
+pytorch-lightning>=1.7
 numpy
-matplotlib
-pillow
-pytorch-lightning
-scikit-learn
-seaborn
-pandas
-torchmetrics
+Pillow
 tqdm
+scikit-learn

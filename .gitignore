@@ -1,0 +1,8 @@
+.venv/
+processed/
+raw/
+thermal_processed/
+vit/
+lightning_logs/
+debug_validation/
+features/

@@ -13,8 +13,6 @@ This project was made in collaberation for a research dissertation.
 - **Multimodal Fusion Architecture**: Combines RGB and thermal imagery for superior detection accuracy
 - **Vision Transformer (ViT)**: State-of-the-art feature extraction for RGB images
 - **Custom CNN Architecture**: Specialized feature extraction for thermal images
-- **Advanced Visualization**: Comprehensive performance metrics and visualizations
-- **Production-Ready Deployment**: Easy-to-use prediction interface
 
 ## Installation
 
