@@ -1,30 +1,17 @@
 from tqdm import tqdm
-import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-from src.data import ThermalDataset
 from src.models import CNN
-from src.config import configs
+from src.data.dataset import *
 
-def train_cnn(model):
+def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch._dynamo.config.suppress_errors = True
     torch._dynamo.config.disable = True
 
+    # Define model
+    model = CNN(config)
     model = model.to(device)
-
-    print("Generating Dataset...")
-    data_module = ThermalDataset(
-        raw_data_dir=config.get("data_dir"),
-        processed_dir=config.get("processed_dir"),
-        train_augmented_multiplicity=config.get("train_augmented_multiplicity"),
-        batch_size=config.get("batch_size"),
-        regenerate=config.get("regenerate"),
-    )
-
-    train_dataloader = data_module.train_dataloaderCNN
-    val_dataloader = data_module.val_dataloaderCNN
 
     num_epochs = config.get("num_epochs")
     lr = config.get("lr")
@@ -43,6 +30,7 @@ def train_cnn(model):
         [class_counts[0] / max(1, class_counts[1])]
     ).to(device)
 
+    print(f"Class counts: {class_counts}, pos_weight={pos_weight.item():.3f}")
     # Loss & optimizer
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = optim.Adam(list(model.parameters()) + list(classifier_head.parameters()), lr=lr)
@@ -92,7 +80,7 @@ def train_cnn(model):
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            best_model_state = model.state_dict().copy()
+            best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
     # Save only the feature extractor (not the classifier)
     if best_model_state:
@@ -119,6 +107,9 @@ def validate_model(model, classifier_head, dataloader, criterion, device):
             correct += (preds == labels.long()).sum().item()
             total += labels.size(0)
 
+    if total == 0:
+        return float("inf"), 0.0
+
     return running_loss / total, correct / total
 
 if __name__ == "__main__":
@@ -131,8 +122,11 @@ if __name__ == "__main__":
     # Define model
     model = CNN(config)
 
+    dataloaders = prepareCombinedDataset()
+
+    train_dataloader, val_dataloader, test_dataloader = dataloaders["thermal"]
+
     # Train model
-    trained_model = train_cnn(model)
+    trained_model = train_cnn(config, train_dataloader, val_dataloader, test_dataloader)
 
     print("Finished")
-

@@ -13,6 +13,8 @@ def configs(model):
         # Data
         "data_dir": "../../dataset/raw/RGB",
         "augmented_dir":"../../dataset/vit",
+        "batch_size": 16,
+        "num_workers": 4,
         "regenerate": True,
         "train_augmented_multiplicity":5,
         "save_FE_path": "../saved/features/ViT_fire_feature_extractor.pth", # Save feature extractor path
@@ -35,7 +37,24 @@ def configs(model):
     }
 
     fusion_config = {
+        # Model
+        "lr": 5e-4,
+        "hidden_dim": 768,
+        "dropout_rate": 0.2,
+        "pos_weight": 1.0,
+        "max_epochs": 20,
+        "visuals": True, # If you want visualisations
+        "weight_decay": 1e-4, # L2 regularization
 
+        # Data
+        "vit_fire_dir": "../../dataset/raw/RGB/fire",
+        "vit_non_fire_dir": "../../dataset/raw/RGB/no_fire",
+        "cnn_fire_dir": "../../dataset/raw/thermal/fire",
+        "cnn_non_fire_dir": "../../dataset/raw/thermal/no_fire",
+        "processed_rgb_dir": "../../dataset/processed/RGB",
+        "processed_thermal_dir": "../../dataset/processed/thermal",
+        "num_aug_copies": 10,
+        "batch_size": 16
     }
 
     # Decide which config to return
@@ -49,6 +68,3 @@ def configs(model):
         config = fusion_config
 
     return config
-
-c = configs("vit")
-print(c["data_dir"])

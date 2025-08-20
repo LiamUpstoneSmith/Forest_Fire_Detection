@@ -1,5 +1,3 @@
-# from .fusion_dataset import CombinedDataset
-from .cnn_dataset import ThermalDataset
-from .vit_dataset import RGBDataset
+from .dataset import FusionDataset, prepareCombinedDataset
 
-__all__ = ["RGBDataset", "ThermalDataset"]
+__all__ = ["FusionDataset", "prepareCombinedDataset"]

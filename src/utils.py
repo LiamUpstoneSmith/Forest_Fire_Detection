@@ -66,3 +66,59 @@ def grayscale_loader(path: str) -> Image.Image:
     with open(path, 'rb') as f:
         img = Image.open(f)
         return img.convert('L')
+
+
+def denormalize_tensor(tensor, mean, std):
+    """Denormalize tensor using mean and std"""
+    if tensor.dim() == 4:  # batch dimension
+        for t, m, s in zip(tensor, mean, std):
+            t.mul_(s).add_(m)
+        return tensor
+    else:
+        return tensor * torch.tensor(std).view(-1, 1, 1) + torch.tensor(mean).view(-1, 1, 1)
+
+def generate_augmented_images(image_paths, transform, output_dir, modality, num_copies):
+    """
+    Generate and save augmented images to disk
+    Returns list of paths to augmented images
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    new_paths = []
+
+    for path in image_paths:
+        img = Image.open(path)
+        base_name = os.path.splitext(os.path.basename(path))[0]
+
+        for j in range(num_copies):
+            # Apply transformation
+            tensor = transform(img)
+
+            # Denormalize for saving
+            if modality == 'RGB':
+                denorm_tensor = denormalize_tensor(
+                    tensor,
+                    [0.485, 0.456, 0.406],
+                    [0.229, 0.224, 0.225]
+                )
+            elif modality == 'thermal':
+                denorm_tensor = denormalize_tensor(
+                    tensor,
+                    [0.5],
+                    [0.5]
+                )
+                denorm_tensor = denorm_tensor.squeeze(0)  # Remove channel dim
+                pil_img = transforms.ToPILImage()(denorm_tensor.cpu())
+
+            # Convert to PIL and save
+            if modality == 'RGB':
+                pil_img = transforms.ToPILImage()(denorm_tensor)
+            else:
+                # Handle grayscale separately
+                pil_img = transforms.ToPILImage()(denorm_tensor.squeeze(0))
+
+            new_filename = f"{base_name}_aug{j}.jpg"
+            new_path = os.path.join(output_dir, new_filename)
+            pil_img.save(new_path)
+            new_paths.append(new_path)
+
+    return new_paths
