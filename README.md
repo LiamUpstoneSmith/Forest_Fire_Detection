@@ -14,6 +14,9 @@ This project was made in collaberation for a research dissertation.
 - **Vision Transformer (ViT)**: State-of-the-art feature extraction for RGB images
 - **Custom CNN Architecture**: Specialized feature extraction for thermal images
 
+##  Model Architecture
+<img src="images/Multi_Model_FlowDiagram.png" style=" width:420px ; height:420px ">
+
 ## Results
 
 |   | CNN | ViT  | Fusion |
