@@ -75,7 +75,7 @@ def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dat
     # Create trainer
     trainer = pl.Trainer(
         max_epochs=config.get("max_epochs"),
-        accelerator="auto",     # Selects GPU/CPU automatically
+        accelerator="CPU",     # auto Selects GPU/CPU automatically
         devices="auto",
         log_every_n_steps=5,
         callbacks=callbacks,

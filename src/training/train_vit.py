@@ -27,7 +27,7 @@ def train_vit(config, train_dataloader, val_dataloader, test_dataloader):
     trainer = pl.Trainer(
         max_epochs=config.get("num_epochs"),
         callbacks=[checkpoint, early_stop],
-        accelerator="auto",
+        accelerator="cpu",
         devices="auto",
         log_every_n_steps=10,
     )

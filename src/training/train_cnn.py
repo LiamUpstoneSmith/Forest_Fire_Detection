@@ -5,7 +5,8 @@ from src.models import CNN
 from src.data.dataset import *
 
 def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     torch._dynamo.config.suppress_errors = True
     torch._dynamo.config.disable = True
 

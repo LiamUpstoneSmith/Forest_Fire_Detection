@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.13 virtualenv at ~/Desktop/Projects/ViT-Based_ForestFire/REPO/forest_fire_detection/.venv" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.13 virtualenv at ~/Desktop/Projects/ViT-Based_ForestFire/REPO/forest_fire_detection/.venv" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="FF_3.12" project-jdk-type="Python SDK" />
 </project>

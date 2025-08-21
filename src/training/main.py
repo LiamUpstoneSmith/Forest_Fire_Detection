@@ -84,7 +84,5 @@ def main():
     predictor = FusionModel(fusion_model, vit_extractor, cnn_extractor)
     print("Fire predictor initialized.")
 
-    return predictor
-
 if __name__ == "__main__":
-    predictor = main()
+    main()

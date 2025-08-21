@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forest Fire Classifier</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            text-align: center;
+        }
+        img {
+            max-width: 300px;
+            margin-top: 20px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        #result {
+            font-size: 1.2rem;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        #result.success {
+            color: green;
+        }
+        #result.error {
+            color: red;
+        }
+        .center {
+          display: block;
+          margin-left: auto;
+          margin-right: auto;
+          width: 50%;
+        }
+        button {
+            padding: 10px 20px;
+            margin-top: 10px;
+            border: none;
+            border-radius: 6px;
+            background-color: #2d89ef;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h2>Upload an RGB and Thermal image of a forest</h2>
+    <form id="upload-form">
+        <label>RGB Image: <input id="rgb-input" type="file" accept="image/*" /></label><br><br>
+        <label>Thermal Image: <input id="thermal-input" type="file" accept="image/*" /></label><br><br>
+        <button type="submit">Submit</button>
+    </form>
+
+    <!-- Previews -->
+    <div id="preview-container">
+        <h3>RGB Preview</h3>
+        <img id="rgb-preview" style="display:none;" class="center" />
+        <h3>Thermal Preview</h3>
+        <img id="thermal-preview" style="display:none;" class="center" />
+    </div>
+
+    <!-- Prediction Result -->
+    <div id="result"></div>
+
+    <script>
+        const form = document.getElementById('upload-form');
+        const rgbInput = document.getElementById('rgb-input');
+        const thermalInput = document.getElementById('thermal-input');
+        const rgbPreview = document.getElementById('rgb-preview');
+        const thermalPreview = document.getElementById('thermal-preview');
+        const resultDiv = document.getElementById('result');
+        const apiUrl = `${window.location.origin}/predict-image/`;
+        const submitBtn = form.querySelector("button");
+
+        rgbInput.addEventListener('change', () => {
+            const file = rgbInput.files[0];
+            if (file) {
+                rgbPreview.src = URL.createObjectURL(file);
+                rgbPreview.style.display = 'block';
+            }
+        });
+
+        thermalInput.addEventListener('change', () => {
+            const file = thermalInput.files[0];
+            if (file) {
+                thermalPreview.src = URL.createObjectURL(file);
+                thermalPreview.style.display = 'block';
+            }
+        });
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const rgbFile = rgbInput.files[0];
+            const thermalFile = thermalInput.files[0];
+            if (!rgbFile || !thermalFile) {
+                alert('Please select both RGB and Thermal images.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('rgb_file', rgbFile);
+            formData.append('thermal_file', thermalFile);
+
+            resultDiv.textContent = "Processing...";
+            resultDiv.className = "";
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.prediction) {
+                    resultDiv.className = "success";
+                    resultDiv.textContent = `Prediction: ${data.prediction}`;
+                } else {
+                    resultDiv.className = "error";
+                    resultDiv.textContent = `Error: ${data.error || "Unknown error"}`;
+                }
+            } catch (err) {
+                resultDiv.className = "error";
+                resultDiv.textContent = `Error: ${err.message}`;
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
