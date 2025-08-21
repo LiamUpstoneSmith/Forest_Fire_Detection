@@ -14,6 +14,14 @@ This project was made in collaberation for a research dissertation.
 - **Vision Transformer (ViT)**: State-of-the-art feature extraction for RGB images
 - **Custom CNN Architecture**: Specialized feature extraction for thermal images
 
+## Results
+
+|   | CNN | ViT  | Fusion |
+| ------------- | ------------- | ------------- | ------------- |
+| Accuracy | 0.993  | 1.0  | 0.984  |
+| Test Loss  | 0.000182  | 0.033627  | 0.051114  |
+
+
 ## Installation
 
 1. Clone the repository:
