@@ -24,6 +24,9 @@ This project was made in collaberation for a research dissertation.
 | Accuracy | 0.993  | 1.0  | 0.984  |
 | Test Loss  | 0.000182  | 0.033627  | 0.051114  |
 
+### Webpage
+This is a screenshot of what the FastAPI webpage looks like.
+<img src="images/Webpage_SS.png">
 
 ## Installation
 
