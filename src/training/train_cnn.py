@@ -32,6 +32,7 @@ def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
     ).to(device)
 
     print(f"Class counts: {class_counts}, pos_weight={pos_weight.item():.3f}")
+
     # Loss & optimizer
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = optim.Adam(list(model.parameters()) + list(classifier_head.parameters()), lr=lr)
@@ -39,10 +40,13 @@ def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
         optimizer, mode='max', factor=0.5, patience=3
     )
 
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
 
     best_val_acc = 0.0
     best_model_state = None
+
+    # Track last-epoch train/val accuracy
+    final_train_acc, final_val_acc = 0.0, 0.0
 
     for epoch in range(num_epochs):
         model.train()
@@ -56,7 +60,7 @@ def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
 
             optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 features = model(images)  # [B, feature_dim]
                 outputs = classifier_head(features).squeeze()
                 loss = criterion(outputs, labels)
@@ -74,19 +78,32 @@ def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
             progress_bar.set_postfix(loss=loss.item(), acc=correct / total)
 
         epoch_loss = running_loss / len(train_dataloader.dataset)
-        train_acc = correct / total
+        final_train_acc = correct / total
 
-        val_loss, val_acc = validate_model(model, classifier_head, val_dataloader, criterion, device)
-        scheduler.step(val_acc)
+        val_loss, final_val_acc = validate_model(model, classifier_head, val_dataloader, criterion, device)
+        scheduler.step(final_val_acc)
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_model_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+        if final_val_acc > best_val_acc:
+            best_val_acc = final_val_acc
+            best_model_state = {
+                "feature_extractor": {k: v.cpu().clone() for k, v in model.state_dict().items()},
+                "classifier_head": {k: v.cpu().clone() for k, v in classifier_head.state_dict().items()}
+            }
 
-    # Save only the feature extractor (not the classifier)
+    # Restore best model
     if best_model_state:
-        torch.save(best_model_state, config.get("save_FE_path"))
-        model.load_state_dict(best_model_state)
+        model.load_state_dict(best_model_state["feature_extractor"])
+        classifier_head.load_state_dict(best_model_state["classifier_head"])
+        torch.save(best_model_state["feature_extractor"], config.get("save_FE_path"))
+
+    # --- Final Statistics ---
+    print("\n=== Final Model Statistics ===")
+    print(f"Training Accuracy   : {final_train_acc:.4f}")
+    print(f"Validation Accuracy : {final_val_acc:.4f}")
+
+    test_loss, test_acc = validate_model(model, classifier_head, test_dataloader, criterion, device)
+    print(f"Test Accuracy       : {test_acc:.4f}")
+    print("================================")
 
     return model
 
@@ -98,7 +115,7 @@ def validate_model(model, classifier_head, dataloader, criterion, device):
     with torch.no_grad():
         for images, labels in dataloader:
             images, labels = images.to(device), labels.to(device).float()
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 features = model(images)
                 outputs = classifier_head(features).squeeze()
                 loss = criterion(outputs, labels)
@@ -114,20 +131,10 @@ def validate_model(model, classifier_head, dataloader, criterion, device):
     return running_loss / total, correct / total
 
 if __name__ == "__main__":
-    # Clear GPU memory cache to prevent out-of-memory errors
     torch.cuda.empty_cache()
-
-    # Define Config
     config = configs("cnn")
-
-    # Define model
-    model = CNN(config)
-
     dataloaders = prepareCombinedDataset()
-
     train_dataloader, val_dataloader, test_dataloader = dataloaders["thermal"]
 
-    # Train model
     trained_model = train_cnn(config, train_dataloader, val_dataloader, test_dataloader)
-
     print("Finished")

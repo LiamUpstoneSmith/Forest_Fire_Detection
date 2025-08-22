@@ -33,6 +33,9 @@
           margin-right: auto;
           width: 50%;
         }
+        h3 {
+          font-weight: normal;
+        }
         button {
             padding: 10px 20px;
             margin-top: 10px;
@@ -47,22 +50,49 @@
             background-color: #ccc;
             cursor: not-allowed;
         }
+        table{
+            margin: 0 auto;
+        }
+        .preview-box {
+          width: 244px;
+          height: 244px;
+          margin: 10px;
+        }
+        .preview-container {
+          margin-top: 20px;
+        }
+        td{
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <h2>Upload an RGB and Thermal image of a forest</h2>
+
     <form id="upload-form">
-        <label>RGB Image: <input id="rgb-input" type="file" accept="image/*" /></label><br><br>
-        <label>Thermal Image: <input id="thermal-input" type="file" accept="image/*" /></label><br><br>
-        <button type="submit">Submit</button>
+        <table>
+            <tr style="align-content: center;">
+                <td><label>RGB Image: <input id="rgb-input" type="file" accept="image/*" /></label></td>
+                <td><label>Thermal Image: <input id="thermal-input" type="file" accept="image/*" /></label></td>
+            </tr>
+            <tr>
+                <td colspan="2" style="text-align:center; padding-top:10px;"><button type="submit">Submit</button></td>
+            </tr>
+        </table>
     </form>
 
     <!-- Previews -->
-    <div id="preview-container">
-        <h3>RGB Preview</h3>
-        <img id="rgb-preview" style="display:none;" class="center" />
-        <h3>Thermal Preview</h3>
-        <img id="thermal-preview" style="display:none;" class="center" />
+    <div class="preview-container">
+        <table>
+            <tr>
+                <td><h3>RGB Preview</h3></td>
+                <td><h3>Thermal Preview</h3></td>
+            </tr>
+            <tr>
+                <td style="width: 254px; height: 254px;"><img id="rgb-preview" style="display:none;" class="preview-box"/></td>
+                <td style="width: 254px; height: 254px;"><img id="thermal-preview" style="display:none;" class="preview-box"/></td>
+            </tr>
+        </table>
     </div>
 
     <!-- Prediction Result -->

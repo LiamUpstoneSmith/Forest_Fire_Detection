@@ -112,6 +112,29 @@ def _scan_dir(dir_path, label):
         mapping[group][frame] = {"path": os.path.join(dir_path, fn), "label": label}
     return mapping
 
+def print_split_statistics(loader, split_name: str):
+    """Utility to print dataset size and class distribution for a DataLoader."""
+    if loader is None:
+        print(f"{split_name} loader not provided.")
+        return
+
+    all_labels = []
+    for batch in loader:
+        # batch can be (vit, cnn, labels) or (img, labels) depending on dataset
+        labels = batch[-1]
+        labels = labels.detach().cpu().numpy() if torch.is_tensor(labels) else np.array(labels)
+        all_labels.extend(labels)
+
+    all_labels = np.array(all_labels, dtype=int)
+    total = len(all_labels)
+    class_counts = np.bincount(all_labels, minlength=2)
+
+    print(f"\n--- {split_name} Split ---")
+    print(f"Total samples: {total}")
+    for cls, count in enumerate(class_counts):
+        pct = 100.0 * count / total if total > 0 else 0.0
+        print(f"Class {cls}: {count} ({pct:.1f}%)")
+
 
 def prepareCombinedDataset():
 
@@ -263,19 +286,30 @@ def prepareCombinedDataset():
     )
 
     # --- Oversampling for training ---
-    if num_aug_copies and num_aug_copies > 0:
-        repeated_indices = []
-        for i in range(len(train_base)):
-            repeated_indices.extend([i] * (num_aug_copies + 1))
-    else:
-        repeated_indices = list(range(len(train_base)))
+    labels_tensor = torch.tensor(train_labels, dtype=torch.long)
+    class_counts = torch.bincount(labels_tensor)
+    max_count = class_counts.max().item()
 
-    train_dataset = Subset(train_base, repeated_indices)
+    balanced_indices = []
+    for cls, count in enumerate(class_counts):
+        # indices relative to train_base (0 ... len(train_labels)-1)
+        cls_indices = [i for i, lbl in enumerate(train_labels) if lbl == cls]
 
-    # Balanced sampler for training
-    class_counts = torch.bincount(torch.tensor(train_labels))
+        repeat_factor = max_count // count
+        remainder = max_count % count
+        balanced_indices.extend(cls_indices * repeat_factor)
+        balanced_indices.extend(random.choices(cls_indices, k=remainder))
+
+    random.shuffle(balanced_indices)
+
+    # These indices are already correct for train_base
+    train_dataset = Subset(train_base, balanced_indices)
+    train_labels_balanced = [train_labels[i] for i in balanced_indices]
+
+    # --- Balanced sampler ---
+    class_counts = torch.bincount(torch.tensor(train_labels_balanced))
     class_weights = 1. / class_counts.float()
-    sample_weights = [class_weights[label] for label in train_labels]
+    sample_weights = [class_weights[label] for label in train_labels_balanced]
 
     sampler = WeightedRandomSampler(
         weights=sample_weights,
@@ -291,30 +325,41 @@ def prepareCombinedDataset():
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                              num_workers=4, pin_memory=True)
 
-    # --- Build RGB-only and Thermal-only datasets from FusionDataset ---
-    rgb_train_dataset = RGBOnlyDataset(train_base)
-    rgb_val_dataset   = RGBOnlyDataset(val_dataset)
-    rgb_test_dataset  = RGBOnlyDataset(test_dataset)
+    # --- Build RGB-only and Thermal-only datasets from the balanced fusion dataset ---
+    rgb_train_dataset = RGBOnlyDataset(train_dataset)
+    rgb_val_dataset = RGBOnlyDataset(val_dataset)
+    rgb_test_dataset = RGBOnlyDataset(test_dataset)
 
-    thermal_train_dataset = ThermalOnlyDataset(train_base)
-    thermal_val_dataset   = ThermalOnlyDataset(val_dataset)
-    thermal_test_dataset  = ThermalOnlyDataset(test_dataset)
+    thermal_train_dataset = ThermalOnlyDataset(train_dataset)
+    thermal_val_dataset = ThermalOnlyDataset(val_dataset)
+    thermal_test_dataset = ThermalOnlyDataset(test_dataset)
 
-    # --- RGB dataloaders ---
+    # --- Dataloaders ---
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler,
+                              num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                            num_workers=4, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                             num_workers=4, pin_memory=True)
+
     rgb_train_loader = DataLoader(rgb_train_dataset, batch_size=batch_size, sampler=sampler,
                                   num_workers=4, pin_memory=True)
-    rgb_val_loader   = DataLoader(rgb_val_dataset, batch_size=batch_size, shuffle=False,
-                                  num_workers=4, pin_memory=True)
-    rgb_test_loader  = DataLoader(rgb_test_dataset, batch_size=batch_size, shuffle=False,
-                                  num_workers=4, pin_memory=True)
+    rgb_val_loader = DataLoader(rgb_val_dataset, batch_size=batch_size, shuffle=False,
+                                num_workers=4, pin_memory=True)
+    rgb_test_loader = DataLoader(rgb_test_dataset, batch_size=batch_size, shuffle=False,
+                                 num_workers=4, pin_memory=True)
 
-    # --- Thermal dataloaders ---
     thermal_train_loader = DataLoader(thermal_train_dataset, batch_size=batch_size, sampler=sampler,
                                       num_workers=4, pin_memory=True)
-    thermal_val_loader   = DataLoader(thermal_val_dataset, batch_size=batch_size, shuffle=False,
-                                      num_workers=4, pin_memory=True)
-    thermal_test_loader  = DataLoader(thermal_test_dataset, batch_size=batch_size, shuffle=False,
-                                      num_workers=4, pin_memory=True)
+    thermal_val_loader = DataLoader(thermal_val_dataset, batch_size=batch_size, shuffle=False,
+                                    num_workers=4, pin_memory=True)
+    thermal_test_loader = DataLoader(thermal_test_dataset, batch_size=batch_size, shuffle=False,
+                                     num_workers=4, pin_memory=True)
+
+    # dataset statistice
+    print_split_statistics(train_loader, "Train")
+    print_split_statistics(val_loader, "Validation")
+    print_split_statistics(test_loader, "Test")
 
     return {
         "fusion":  (train_loader, val_loader, test_loader),
@@ -322,26 +367,11 @@ def prepareCombinedDataset():
         "thermal": (thermal_train_loader, thermal_val_loader, thermal_test_loader)
     }
 
+
 if __name__ == "__main__":
     config = configs("fusion")
     dataloaders = prepareCombinedDataset()
 
     train_dataloader, val_dataloader, test_dataloader = dataloaders["fusion"]
 
-    # Check validation set size
-    if val_dataloader is not None:
-        val_size = len(val_dataloader.dataset)
-        print(f"Validation samples: {val_size}")
 
-        # Check class distribution
-        all_val_labels = []
-        for _, _, labels in val_dataloader:
-            labels = labels.detach().cpu().numpy() if torch.is_tensor(labels) else np.array(labels)
-            all_val_labels.extend(labels)
-
-        non_fire_count = sum(all_val_labels)
-        fire_count = len(all_val_labels) - non_fire_count
-        print(f"Non-Fire samples: {non_fire_count} ({non_fire_count/len(all_val_labels):.1%})")
-        print(f"Fire samples: {fire_count} ({fire_count/len(all_val_labels):.1%})")
-    else:
-        print("No validation loader provided. Training will run without validation.")

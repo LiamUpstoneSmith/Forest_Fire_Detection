@@ -1,6 +1,7 @@
 import shutil
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint , EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from sklearn.metrics import classification_report
 from src.data.dataset import *
 from src.models import ViT
 from src.config import configs
@@ -32,44 +33,46 @@ def train_vit(config, train_dataloader, val_dataloader, test_dataloader):
         log_every_n_steps=10,
     )
 
-    # ✅ Pass loaders directly
+    # Training
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
 
+    # Load best model for evaluation
     best_path = checkpoint.best_model_path
-    if not best_path or not os.path.exists(best_path):
-        print("WARNING: No best checkpoint found. Using last-epoch model for testing.")
-        test_result = trainer.test(model, dataloaders=test_dataloader)
-    else:
+    if best_path and os.path.exists(best_path):
+        print(f"Loading best model from checkpoint: {best_path}")
         best_model = ViT.load_from_checkpoint(best_path, config=config)
-        test_result = trainer.test(best_model, dataloaders=test_dataloader)
+    else:
+        print("WARNING: No best checkpoint found. Using last-epoch model for testing.")
+        best_model = model
 
-    print(f"Test Accuracy: {test_result[0]['test_acc']:.2f}")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
+    best_model.to(device)
 
+    # Lightning test loop (optional, still works)
+    test_result = trainer.test(best_model, dataloaders=test_dataloader)
+    print(f"\nLightning Test Accuracy: {test_result[0]['test_acc']:.2f}")
+
+    # Save checkpoint
     save_path = config.get("save_FE_path")
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         if best_path and os.path.exists(best_path):
-            shutil.copy2(best_path, save_path)  # save the checkpoint
+            shutil.copy2(best_path, save_path)
         else:
-            trainer.save_checkpoint(save_path)  # fallback
+            trainer.save_checkpoint(save_path)
 
-    return model, trainer
+    return best_model, trainer
 
 
 if __name__ == "__main__":
-    # Clear GPU memory cache
     torch.cuda.empty_cache()
-
-    # Define Dataloaders
     dataloaders = prepareCombinedDataset()
 
-    # Access thermal dataloaders
+    # Access RGB dataloaders
     rgb_train, rgb_val, rgb_test = dataloaders["rgb"]
 
-    # Define Config
     config = configs("vit")
 
-    # train Model
-    trained_model, trainer, data = train_vit(config, rgb_train, rgb_val, rgb_test)
-
+    trained_model, trainer = train_vit(config, rgb_train, rgb_val, rgb_test)
     print("Finished")
