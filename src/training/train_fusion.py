@@ -29,7 +29,7 @@ def evaluate_classification_report(model, dataloader, device, split_name="Datase
     print(classification_report(all_labels, all_preds, target_names=["No Fire", "Fire"]))
 
 
-def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dataloader, test_dataloader):
+def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dataloader, test_dataloader, notebook=False):
     """
     End-to-end training pipeline for multimodal fusion model with validation and checkpointing.
     """
@@ -40,6 +40,7 @@ def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dat
         vit_extractor=vit_extractor,
         cnn_extractor=cnn_extractor,
         config=config,
+        notebook=notebook,
     )
 
     # Configure callbacks

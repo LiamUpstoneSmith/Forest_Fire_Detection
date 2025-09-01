@@ -10,7 +10,7 @@ from torchmetrics import Accuracy, F1Score, Precision, Recall
 
 # Fusion Model combining ViT and CNN features
 class FusionNN(pl.LightningModule):
-    def __init__(self, vit_extractor, cnn_extractor, config=None, visuals=True):
+    def __init__(self, vit_extractor, cnn_extractor, config=None, visuals=True, notebook=False):
         """
         Multimodal fusion model combining ViT (RGB) and CNN (thermal) features.
 
@@ -20,6 +20,8 @@ class FusionNN(pl.LightningModule):
             config: Configuration dictionary for hyperparameters
             visuals: Enable advanced visualization metrics
         """
+        self.notebook = notebook # Save figures path dependant if its being ran in a notebook or python files
+
         super().__init__()
         # Configuration setup
         default_config = {
@@ -239,9 +241,10 @@ class FusionNN(pl.LightningModule):
         plt.ylim(0, 1.05)  # Ensure accuracy range is visible
         plt.legend()
         plt.grid(True)
-
-        # Save and show
-        plt.savefig("../saved/figures/accuracy_history.png")
+        if self.notebook:
+            plt.savefig("figures/accuracy_history.png")
+        else:
+            plt.savefig("../saved/figures/accuracy_history.png")
         plt.show()
 
     def on_test_end(self):
@@ -294,7 +297,10 @@ class FusionNN(pl.LightningModule):
         plt.xlabel('Predicted')
         plt.ylabel('Actual')
         plt.title('Confusion Matrix')
-        plt.savefig("../saved/figures/confusion_matrix.png")
+        if self.notebook:
+            plt.savefig("figures/confusion_matrix.png")
+        else:
+            plt.savefig("../saved/figures/confusion_matrix.png")
         plt.show()
 
         # 3. ROC Curve
@@ -310,7 +316,10 @@ class FusionNN(pl.LightningModule):
         plt.ylabel('True Positive Rate')
         plt.title('Receiver Operating Characteristic')
         plt.legend(loc="lower right")
-        plt.savefig("../saved/figures/roc_curve.png")
+        if self.notebook:
+            plt.savefig("figures/roc_curve.png")
+        else:
+            plt.savefig("../saved/figures/roc_curve.png")
         plt.show()
 
         # 4. Precision-Recall Curve
@@ -323,7 +332,10 @@ class FusionNN(pl.LightningModule):
         plt.ylabel('Precision')
         plt.title('Precision-Recall Curve')
         plt.legend(loc="lower left")
-        plt.savefig("../saved/figures/precision_recall_curve.png")
+        if self.notebook:
+            plt.savefig("figures/precision_curve.png")
+        else:
+            plt.savefig("../saved/figures/precision_recall_curve.png")
         plt.show()
 
         # 5. Probability Distribution
@@ -339,7 +351,10 @@ class FusionNN(pl.LightningModule):
         )
         plt.title('Predicted Probability Distribution')
         plt.axvline(0.5, color='black', linestyle='--')
-        plt.savefig("../saved/figures/probability_distribution.png")
+        if self.notebook:
+            plt.savefig("figures/probability_distribution.png")
+        else:
+            plt.savefig("../saved/figures/probability_distribution.png")
         plt.show()
 
     def configure_optimizers(self):
