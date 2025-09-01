@@ -151,7 +151,7 @@
                 const data = await response.json();
                 if (data.prediction) {
                     resultDiv.className = "success";
-                    resultDiv.textContent = `Prediction: ${data.prediction}`;
+                    resultDiv.textContent = `Prediction: ${data.prediction} (Probability: ${data.probability}%)`;
                 } else {
                     resultDiv.className = "error";
                     resultDiv.textContent = `Error: ${data.error || "Unknown error"}`;

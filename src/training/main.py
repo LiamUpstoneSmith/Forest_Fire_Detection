@@ -2,6 +2,7 @@ import torch.nn as nn
 from src.data.dataset import *
 from src.training import *
 from src.models import *
+from src.config import configs
 
 
 def main():
@@ -81,7 +82,7 @@ def main():
     print("Fusion model weights saved.")
 
     # Initialize predictor for deployment
-    predictor = FusionModel(fusion_model, vit_extractor, cnn_extractor)
+    predictor = FusionModelPredictor(fusion_model, vit_extractor, cnn_extractor)
     print("Fire predictor initialized.")
 
 if __name__ == "__main__":

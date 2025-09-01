@@ -1,3 +1,4 @@
+# 2.4
 from typing import List
 from src.config import configs
 import os, re, random
@@ -136,9 +137,10 @@ def print_split_statistics(loader, split_name: str):
         print(f"Class {cls}: {count} ({pct:.1f}%)")
 
 
-def prepareCombinedDataset():
+def prepareCombinedDataset(config=None):
 
-    config = configs("fusion")
+    if config is None:
+        config = configs("fusion")
 
     vit_fire_dir = config.get("vit_fire_dir")
     vit_non_fire_dir = config.get("vit_non_fire_dir")
@@ -250,8 +252,10 @@ def prepareCombinedDataset():
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
     cnn_train_transform = v2.Compose([
-        v2.RandomResizedCrop(size=(224, 224)),
+        v2.Resize((224, 224)),
         v2.RandomHorizontalFlip(),
+        v2.RandomVerticalFlip(),
+        v2.RandomRotation(15),
         v2.ToImage(),
         v2.ToDtype(torch.float32, scale=True),
         v2.Grayscale(num_output_channels=1),
@@ -285,20 +289,27 @@ def prepareCombinedDataset():
         train_mode=False
     )
 
-    # --- Oversampling for training ---
-    labels_tensor = torch.tensor(train_labels, dtype=torch.long)
-    class_counts = torch.bincount(labels_tensor)
-    max_count = class_counts.max().item()
+    # --- Oversampling to multiply dataset by num_aug_copies ---
+    num_aug_copies = int(config.get("num_aug_copies", 3))  # fallback to 3
+
+    # Group indices by class
+    class_to_indices = {cls: [i for i, lbl in enumerate(train_labels)] for cls in set(train_labels)}
+    for cls in class_to_indices:
+        class_to_indices[cls] = [i for i, lbl in enumerate(train_labels) if lbl == cls]
+
+    # Compute target number of samples per class
+    original_counts = {cls: len(idxs) for cls, idxs in class_to_indices.items()}
+    target_count = max(original_counts.values()) * num_aug_copies
 
     balanced_indices = []
-    for cls, count in enumerate(class_counts):
-        # indices relative to train_base (0 ... len(train_labels)-1)
-        cls_indices = [i for i, lbl in enumerate(train_labels) if lbl == cls]
 
-        repeat_factor = max_count // count
-        remainder = max_count % count
-        balanced_indices.extend(cls_indices * repeat_factor)
-        balanced_indices.extend(random.choices(cls_indices, k=remainder))
+    for cls, idxs in class_to_indices.items():
+        if len(idxs) == 0:
+            continue
+        repeat_factor = target_count // len(idxs)
+        remainder = target_count % len(idxs)
+        balanced_indices.extend(idxs * repeat_factor)
+        balanced_indices.extend(random.choices(idxs, k=remainder))
 
     random.shuffle(balanced_indices)
 
@@ -306,7 +317,7 @@ def prepareCombinedDataset():
     train_dataset = Subset(train_base, balanced_indices)
     train_labels_balanced = [train_labels[i] for i in balanced_indices]
 
-    # --- Balanced sampler ---
+    # --- Balanced sampler (optional, keeps per-class weighting) ---
     class_counts = torch.bincount(torch.tensor(train_labels_balanced))
     class_weights = 1. / class_counts.float()
     sample_weights = [class_weights[label] for label in train_labels_balanced]
@@ -333,14 +344,6 @@ def prepareCombinedDataset():
     thermal_train_dataset = ThermalOnlyDataset(train_dataset)
     thermal_val_dataset = ThermalOnlyDataset(val_dataset)
     thermal_test_dataset = ThermalOnlyDataset(test_dataset)
-
-    # --- Dataloaders ---
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler,
-                              num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                            num_workers=4, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                             num_workers=4, pin_memory=True)
 
     rgb_train_loader = DataLoader(rgb_train_dataset, batch_size=batch_size, sampler=sampler,
                                   num_workers=4, pin_memory=True)

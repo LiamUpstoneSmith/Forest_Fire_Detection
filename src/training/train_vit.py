@@ -1,7 +1,6 @@
 import shutil
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from sklearn.metrics import classification_report
 from src.data.dataset import *
 from src.models import ViT
 from src.config import configs

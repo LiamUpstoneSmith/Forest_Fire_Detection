@@ -51,8 +51,6 @@ def configs(model):
         "vit_non_fire_dir": "../../dataset/raw/RGB/no_fire",
         "cnn_fire_dir": "../../dataset/raw/thermal/fire",
         "cnn_non_fire_dir": "../../dataset/raw/thermal/no_fire",
-        "processed_rgb_dir": "../../dataset/processed/RGB",
-        "processed_thermal_dir": "../../dataset/processed/thermal",
         "num_aug_copies": 10,
         "batch_size": 16
     }

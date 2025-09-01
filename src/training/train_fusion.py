@@ -1,11 +1,7 @@
-import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from sklearn.metrics import classification_report
-import numpy as np
-import os
-
-from src.models import FusionModel, ViT, CNN, FusionNN
+from src.models import FusionModelPredictor, ViT, CNN, FusionNN
 from src.data.dataset import *
 from src.config import configs
 
@@ -148,5 +144,5 @@ if __name__ == "__main__":
     print("Fusion model weights saved.")
 
     # Predictor for deployment
-    predictor = FusionModel(fusion_model, vit_extractor, cnn_extractor)
+    predictor = FusionModelPredictor(fusion_model, vit_extractor, cnn_extractor)
     print("Fire predictor initialized.")
