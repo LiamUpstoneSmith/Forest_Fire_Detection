@@ -1,4 +1,3 @@
-# 2.8
 from typing import List
 from src.config import configs
 import os, re, random
@@ -98,6 +97,19 @@ class FusionDataset(Dataset):
 
         return vit_t, cnn_t, torch.tensor(lbl, dtype=torch.long)
 
+class AugmentedDataset(Dataset):
+    def __init__(self, base_dataset, multiplier=1):
+        self.base = base_dataset
+        self.multiplier = multiplier
+
+    def __len__(self):
+        return len(self.base) * self.multiplier
+
+    def __getitem__(self, idx):
+        # Cycle through the base dataset
+        base_idx = idx % len(self.base)
+        return self.base[base_idx]
+
 # --- Helpers ---
 def _parse_filename(filename):
     stem = os.path.splitext(os.path.basename(filename))[0].lower()
@@ -136,6 +148,7 @@ def prepareCombinedDataset():
     cnn_fire_dir = config["cnn_fire_dir"]
     cnn_non_fire_dir = config["cnn_non_fire_dir"]
     batch_size = int(config.get("batch_size", 16))
+
 
     vit_map, cnn_map = {}, {}
     for src_dir,lbl in [(vit_fire_dir,1),(vit_non_fire_dir,0)]: vit_map.update(_scan_dir(src_dir,lbl))
@@ -183,7 +196,8 @@ def prepareCombinedDataset():
     train_tf = PairedRandomTransform(config,train_mode=True)
     eval_tf  = PairedRandomTransform(config,train_mode=False)
 
-    train_dataset = FusionDataset(vit_train,cnn_train,train_labels,train_tf,train_mode=True)
+    base_train_dataset = FusionDataset(vit_train,cnn_train,train_labels,train_tf,train_mode=True)
+    train_dataset = AugmentedDataset(base_train_dataset, multiplier=int(config.get("multiplier")))
     val_dataset   = FusionDataset(vit_val,cnn_val,val_labels,eval_tf,train_mode=False)
     test_dataset  = FusionDataset(vit_test,cnn_test,test_labels,eval_tf,train_mode=False)
 

@@ -3,7 +3,7 @@ from src.data.dataset import *
 from src.training import *
 from src.models import *
 from src.config import configs
-
+import time
 
 def main():
     # Clear GPU memory cache
@@ -24,8 +24,14 @@ def main():
     # Define Config
     cnn_config = configs("cnn")
 
+    # Start timer
+    cnn_start = time.time()
+
     # Train model
     trained_cnn = train_cnn(cnn_config, thermal_train, thermal_val, thermal_test)
+
+    cnn_time = time.time()
+    cnn_time = cnn_time - cnn_start
 
     # === ViT Training ===
     print("\n\nViT Training Starting...\n")
@@ -38,8 +44,13 @@ def main():
     # Define Config
     vit_config = configs("vit")
 
+    vit_start = time.time()
+
     # train Model
     trained_model, trainer = train_vit(vit_config, rgb_train, rgb_val, rgb_test)
+
+    vit_time = time.time()
+    vit_time = vit_time - vit_start
 
     # === Fusion Training ===
     print("\n\nFusion Training Starting...\n")
@@ -65,6 +76,8 @@ def main():
     # Access fusion dataloaders
     fusion_train, fusion_val, fusion_test = dataloaders["fusion"]
 
+    fusion_start = time.time()
+
     # Train fusion model
     print("\nTraining fusion model...")
     fusion_model, results = train_fusion(
@@ -76,6 +89,10 @@ def main():
         test_dataloader=fusion_test
     )
 
+    fusion_time = time.time()
+    full_time = fusion_time - cnn_start
+    fusion_time = fusion_time - fusion_start
+
     # Save trained weights
     fusion_model.eval()
     torch.save(fusion_model.state_dict(), "../saved/features/fusion_model_weights.pth")
@@ -84,6 +101,11 @@ def main():
     # Initialize predictor for deployment
     predictor = FusionModelPredictor(fusion_model, vit_extractor, cnn_extractor)
     print("Fire predictor initialized.")
+
+    print(f"\nCNN Model Training/Testing time: {cnn_time/60:.2f} minutes.")
+    print(f"\nViT Model Training/Testing time: {vit_time/60:.2f} minutes.")
+    print(f"\nFusion Model Training/Testing time: {fusion_time/60:.2f} minutes.")
+    print(f"\nTotal time: {full_time/60:.2f} minutes.")
 
 if __name__ == "__main__":
     main()

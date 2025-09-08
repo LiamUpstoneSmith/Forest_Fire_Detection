@@ -38,6 +38,7 @@ def configs(model):
         "rotation": 15,
         "hflip_p": 0.5, # Horizontal flip probability
         "vflip_p": 0.5, # Vertical flip probability
+        "multiplier": 3
     }
 
     # Decide which config to return
