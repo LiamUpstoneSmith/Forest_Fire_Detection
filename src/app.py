@@ -31,6 +31,7 @@ fusion_model = FusionNN(
         cnn_extractor=cnn_extractor,
         config=configs("fusion"),
     )
+fusion_model.load_state_dict(torch.load("src/saved/features/fusion_model_weights.pth", map_location=device), strict=False)
 
 vit_extractor.eval().to(device)
 cnn_extractor.eval().to(device)

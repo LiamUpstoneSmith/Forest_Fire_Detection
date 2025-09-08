@@ -15,7 +15,7 @@ class ViT(pl.LightningModule):
         self.config = config or {}
         self.save_hyperparameters(self.config)
 
-        weights = ViT_B_16_Weights.IMAGENET1K_V1 if self.config.get("pretrained", True) else None
+        weights = ViT_B_16_Weights.IMAGENET1K_V1 if self.config.get("pretrained") else None
         self.vit = vit_b_16(weights=weights)
 
         # Determine feature dim BEFORE replacing heads
@@ -36,7 +36,7 @@ class ViT(pl.LightningModule):
                 p.requires_grad = False
 
         # Small classification head (if needed during training/metrics)
-        dropout_rate = float(self.config.get("dropout_rate", 0.5))
+        dropout_rate = float(self.config.get("dropout_rate"))
         self.classifier = nn.Sequential(
             nn.Linear(feat_dim, 256),
             nn.ReLU(),
@@ -48,8 +48,8 @@ class ViT(pl.LightningModule):
         # Loss handling with optional pos_weight
         pos_w = self.config.get("pos_weight")
         if pos_w is not None:
-            self.register_buffer("_pos_weight_buf", torch.tensor(float(pos_w)))
-            self.criterion = None  # always fetch via _get_loss()
+            self.register_buffer("_pos_weight_buf", torch.as_tensor(pos_w, dtype=torch.float32))
+            self.criterion = None
         else:
             self.criterion = nn.BCEWithLogitsLoss()
 
@@ -76,8 +76,8 @@ class ViT(pl.LightningModule):
         return nn.BCEWithLogitsLoss()
 
     def configure_optimizers(self):
-        lr = float(self.config.get("lr", 3e-4))
-        wd = float(self.config.get("weight_decay", 1e-2))
+        lr = float(self.config.get("lr"))
+        wd = float(self.config.get("weight_decay"))
         optimizer = optim.AdamW(self.parameters(), lr=lr, weight_decay=wd)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='max', factor=0.5, patience=3

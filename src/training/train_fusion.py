@@ -1,3 +1,6 @@
+import os
+import torch
+import numpy as np
 import torch.nn as nn
 import pytorch_lightning as pl
 from sklearn.metrics import classification_report
@@ -6,10 +9,10 @@ from src.data.dataset import *
 from src.config import configs
 
 
-def evaluate_classification_report(model, dataloader, device, split_name="Dataset"):
-    """Run a classification report on a given dataloader."""
+def evaluate_classification_report_with_probs(model, dataloader, device, split_name="Dataset"):
+    """Run a classification report and return true labels + probabilities."""
     model.eval()
-    all_labels, all_preds = [], []
+    all_labels, all_preds, all_probs = [], [], []
 
     with torch.no_grad():
         for rgb_imgs, thermal_imgs, labels in dataloader:
@@ -19,14 +22,17 @@ def evaluate_classification_report(model, dataloader, device, split_name="Datase
                 labels.to(device).long(),
             )
 
-            outputs = model(rgb_imgs, thermal_imgs)   # model forward
-            preds = (torch.sigmoid(outputs) > 0.5).long().squeeze()
+            outputs = model(rgb_imgs, thermal_imgs)
+            probs = torch.sigmoid(outputs).view(-1)
+            preds = (probs > 0.5).long()
 
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(preds.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
 
     print(f"\n--- {split_name} Classification Report ---")
     print(classification_report(all_labels, all_preds, target_names=["No Fire", "Fire"]))
+    return np.array(all_labels), np.array(all_probs)
 
 
 def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dataloader, test_dataloader, notebook=False):
@@ -64,7 +70,7 @@ def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dat
     # Trainer
     trainer = pl.Trainer(
         max_epochs=config.get("max_epochs"),
-        accelerator="cpu",
+        accelerator="auto",
         devices="auto",
         log_every_n_steps=5,
         callbacks=callbacks,
@@ -77,6 +83,16 @@ def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dat
     # Train
     print("\nStarting training...")
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+
+    # Ensure convergence plots are always generated
+    try:
+        if model.visuals:
+            if model.train_acc_history and model.val_acc_history:
+                model.plot_accuracy_history()
+            if model.train_loss_history and model.val_loss_history:
+                model.plot_convergence_history()
+    except Exception as e:
+        print(f"Warning: Could not generate convergence plots: {e}")
 
     # Restore best checkpoint if available
     if val_dataloader and hasattr(trainer, "checkpoint_callback"):
@@ -91,18 +107,26 @@ def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dat
             )
 
     # --- Classification Reports ---
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    evaluate_classification_report(model, train_dataloader, device, split_name="Train")
+    y_train, p_train = evaluate_classification_report_with_probs(
+        model, train_dataloader, device, split_name="Train"
+    )
     if val_dataloader:
-        evaluate_classification_report(model, val_dataloader, device, split_name="Validation")
-    evaluate_classification_report(model, test_dataloader, device, split_name="Test")
+        evaluate_classification_report_with_probs(
+            model, val_dataloader, device, split_name="Validation"
+        )
+    y_test, p_test = evaluate_classification_report_with_probs(
+        model, test_dataloader, device, split_name="Test"
+    )
 
     # Lightning test results (optional)
     print("\nEvaluating with Lightning test loop...")
     test_results = trainer.test(model, dataloaders=test_dataloader)
+
+    if model.visuals:
+        model.plot_precision_recall_comparison(y_train, p_train, y_test, p_test)
 
     return model, test_results
 

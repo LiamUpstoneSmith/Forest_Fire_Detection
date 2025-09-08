@@ -10,128 +10,102 @@ from torchmetrics import Accuracy, F1Score, Precision, Recall
 
 # Fusion Model combining ViT and CNN features
 class FusionNN(pl.LightningModule):
-    def __init__(self, vit_extractor, cnn_extractor, config=None, visuals=True, notebook=False):
+    def __init__(self, vit_extractor, cnn_extractor, config=None, notebook=False):
         """
         Multimodal fusion model combining ViT (RGB) and CNN (thermal) features.
-
-        Args:
-            vit_extractor: Pretrained ViT feature extractor
-            cnn_extractor: Pretrained CNN feature extractor
-            config: Configuration dictionary for hyperparameters
-            visuals: Enable advanced visualization metrics
         """
-        self.notebook = notebook # Save figures path dependant if its being ran in a notebook or python files
-
+        self.notebook = notebook
         super().__init__()
+
         # Configuration setup
-        default_config = {
-            "lr": 1e-3,                # Learning rate
-            "weight_decay": 1e-4,      # L2 regularization
-            "dropout_rate": 0.4,       # Dropout probability
-            "hidden_dim": 512,         # Fusion layer dimension
-            "pos_weight": 1.0          # Class imbalance weight
-        }
-        if config:
-            default_config.update(config)  # Merge with user config
-        self.config = default_config
+        self.config = config
 
         # Visualization settings
-        self.visuals = visuals
+        self.visuals = config.get("visuals")
         self.save_hyperparameters(ignore=["vit_extractor", "cnn_extractor"])
 
         # Feature extractors (frozen)
         self.vit_extractor = vit_extractor
         self.cnn_extractor = cnn_extractor
-
-        # Freeze extractors to preserve learned features
-        for param in self.vit_extractor.parameters():
-            param.requires_grad = False
-        for param in self.cnn_extractor.parameters():
-            param.requires_grad = False
+        for p in self.vit_extractor.parameters():
+            p.requires_grad = False
+        for p in self.cnn_extractor.parameters():
+            p.requires_grad = False
 
         # Fusion classifier network
         self.classifier = nn.Sequential(
-            nn.Linear(768 + 512, self.config["hidden_dim"]),  # Combine features
-            nn.ReLU(),                                        # Non-linearity
-            nn.BatchNorm1d(self.config["hidden_dim"]),        # Stabilization
-            nn.Dropout(self.config["dropout_rate"]),          # Regularization
-            nn.Linear(self.config["hidden_dim"], 1)           # Binary output
+            nn.Linear(768 + 512, self.config["hidden_dim"]),
+            nn.ReLU(),
+            nn.BatchNorm1d(self.config["hidden_dim"]),
+            nn.Dropout(self.config["dropout_rate"]),
+            nn.Linear(self.config["hidden_dim"], 1)
         )
 
-        # Loss function with class weighting
-        self.criterion = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor(self.config["pos_weight"])
-        )
+        # Register a buffer for pos_weight so device/dtype always match logits
+        self.register_buffer("pos_weight", torch.tensor(self.config["pos_weight"], dtype=torch.float))
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
 
         # Core metrics
         self.train_acc = Accuracy(task='binary')
         self.val_acc = Accuracy(task='binary')
         self.test_acc = Accuracy(task='binary')
 
-        self.train_acc_history = []  # Store training accuracy per epoch
-        self.val_acc_history = []    # Store validation accuracy per epoch
-
         # Advanced metrics for visualization
         if self.visuals:
-            # F1 Scores
             self.train_f1 = F1Score(task='binary')
             self.val_f1 = F1Score(task='binary')
             self.test_f1 = F1Score(task='binary')
 
-            # Precision metrics
             self.train_precision = Precision(task='binary')
             self.val_precision = Precision(task='binary')
             self.test_precision = Precision(task='binary')
 
-            # Recall metrics
             self.train_recall = Recall(task='binary')
             self.val_recall = Recall(task='binary')
             self.test_recall = Recall(task='binary')
 
-        # Storage for test visualizations
-        self.test_preds = []    # Predicted labels
-        self.test_targets = []  # Ground truth labels
-        self.test_probs = []    # Prediction probabilities
+        # Storage for visualizations and histories
+        self.test_preds, self.test_targets, self.test_probs = [], [], []
+        self.train_acc_history, self.val_acc_history, self.test_acc_history = [], [], []
+        self.train_loss_history, self.val_loss_history, self.test_loss_history = [], [], []
+
 
     def forward(self, vit_input, cnn_input):
         """Forward pass through both feature extractors and fusion classifier"""
-        # Extract features from both modalities
-        vit_features = self.vit_extractor(vit_input)  # RGB features (768-dim)
-        cnn_features = self.cnn_extractor(cnn_input)  # Thermal features (512-dim)
-
-        # Concatenate features along channel dimension
+        vit_features = self.vit_extractor(vit_input)   # shape: (B, 768)
+        cnn_features = self.cnn_extractor(cnn_input)   # shape: (B, 512)
         combined = torch.cat((vit_features, cnn_features), dim=1)
-        return self.classifier(combined).squeeze(1)  # Remove extra dimension
+        logits = self.classifier(combined).squeeze(1)  # shape: (B,)
+        return logits
 
     def training_step(self, batch, batch_idx):
-        """Single training step with metrics calculation"""
         vit_imgs, cnn_imgs, labels = batch
-        logits = self(vit_imgs, cnn_imgs)  # Forward pass
-        loss = self.criterion(logits, labels)  # Compute loss
+        logits = self(vit_imgs, cnn_imgs)
 
-        # Convert to probabilities and predictions
+        # BCEWithLogitsLoss expects float targets
+        labels_float = labels.float()
+        loss = self.criterion(logits, labels_float)
+
         probs = torch.sigmoid(logits)
-        preds = probs > 0.5  # Threshold at 0.5
+        preds = (probs > 0.5)
 
-        # Update metrics
-        self.train_acc(preds, labels)
+        # Metrics prefer int/bool targets
+        labels_int = labels.long()
+        self.train_acc(preds, labels_int)
         if self.visuals:
-            self.train_f1(preds, labels)
-            self.train_precision(preds, labels)
-            self.train_recall(preds, labels)
+            self.train_f1(preds, labels_int)
+            self.train_precision(preds, labels_int)
+            self.train_recall(preds, labels_int)
 
-        # Log metrics
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train_acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
         if self.visuals:
             self.log("train_f1", self.train_f1, on_step=False, on_epoch=True, prog_bar=True)
             self.log("train_precision", self.train_precision, on_step=False, on_epoch=True)
             self.log("train_recall", self.train_recall, on_step=False, on_epoch=True)
-
         return loss
 
     def on_train_epoch_start(self):
-        """Reset training metrics at the beginning of each epoch"""
         self.train_acc.reset()
         if self.visuals:
             self.train_f1.reset()
@@ -139,7 +113,6 @@ class FusionNN(pl.LightningModule):
             self.train_recall.reset()
 
     def on_validation_epoch_start(self):
-        """Reset validation metrics at the beginning of each epoch"""
         self.val_acc.reset()
         if self.visuals:
             self.val_f1.reset()
@@ -147,83 +120,122 @@ class FusionNN(pl.LightningModule):
             self.val_recall.reset()
 
     def validation_step(self, batch, batch_idx):
-        """
-        Validation step with proper model state handling
+        vit_imgs, cnn_imgs, labels = batch
+        logits = self(vit_imgs, cnn_imgs)
 
-        Ensures:
-        - Model is in evaluation mode
-        - Gradients are disabled for efficiency
-        - Metrics are properly synchronized across devices
-        """
-        # Set model to evaluation mode and disable gradients
-        self.eval()
-        with torch.no_grad():
-            vit_imgs, cnn_imgs, labels = batch
-            logits = self(vit_imgs, cnn_imgs)
-            loss = self.criterion(logits, labels)
-            probs = torch.sigmoid(logits)
-            preds = probs > 0.5
+        labels_float = labels.float()
+        loss = self.criterion(logits, labels_float)
 
-        # Update metrics
-        self.val_acc(preds, labels)
+        probs = torch.sigmoid(logits)
+        preds = (probs > 0.5)
+        labels_int = labels.long()
+
+        self.val_acc(preds, labels_int)
         if self.visuals:
-            self.val_f1(preds, labels)
-            self.val_precision(preds, labels)
-            self.val_recall(preds, labels)
+            self.val_f1(preds, labels_int)
+            self.val_precision(preds, labels_int)
+            self.val_recall(preds, labels_int)
 
-        # Log metrics with synchronization for distributed training
         self.log("val_loss", loss, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True, sync_dist=True)
         if self.visuals:
             self.log("val_f1", self.val_f1, on_epoch=True, prog_bar=True, sync_dist=True)
             self.log("val_precision", self.val_precision, on_epoch=True, sync_dist=True)
             self.log("val_recall", self.val_recall, on_epoch=True, sync_dist=True)
-
         return loss
 
 
+
     def test_step(self, batch, batch_idx):
-        """Test step with metrics and data collection for visualization"""
         vit_imgs, cnn_imgs, labels = batch
         logits = self(vit_imgs, cnn_imgs)
-        loss = self.criterion(logits, labels)
+
+        labels_float = labels.float()
+        loss = self.criterion(logits, labels_float)
+
         probs = torch.sigmoid(logits)
-        preds = probs > 0.5
+        preds = (probs > 0.5)
+        labels_int = labels.long()
 
-        # Update metrics
-        self.test_acc(preds, labels)
+        self.test_acc(preds, labels_int)
         if self.visuals:
-            self.test_f1(preds, labels)
-            self.test_precision(preds, labels)
-            self.test_recall(preds, labels)
+            self.test_f1(preds, labels_int)
+            self.test_precision(preds, labels_int)
+            self.test_recall(preds, labels_int)
 
-            # Store for visualization
             self.test_preds.append(preds.detach().cpu())
-            self.test_targets.append(labels.detach().cpu())
+            self.test_targets.append(labels_int.detach().cpu())
             self.test_probs.append(probs.detach().cpu())
 
-        # Log metrics
         self.log("test_loss", loss, on_epoch=True)
         self.log("test_acc", self.test_acc, on_epoch=True)
         if self.visuals:
             self.log("test_f1", self.test_f1, on_epoch=True)
             self.log("test_precision", self.test_precision, on_epoch=True)
             self.log("test_recall", self.test_recall, on_epoch=True)
-
         return loss
 
     def on_train_epoch_end(self):
-        """Record training and validation accuracy at epoch end"""
-        # Only record if metrics are available (handles incomplete epochs)
-        if self.trainer.callback_metrics.get("train_acc") is not None:
-            self.train_acc_history.append(self.trainer.callback_metrics["train_acc"].item())
-        if self.trainer.callback_metrics.get("val_acc") is not None:
-            self.val_acc_history.append(self.trainer.callback_metrics["val_acc"].item())
+        """Record training/validation accuracy and loss at epoch end"""
+        metrics = self.trainer.callback_metrics
+
+        # Record accuracy
+        if metrics.get("train_acc") is not None:
+            self.train_acc_history.append(metrics["train_acc"].item())
+        if metrics.get("val_acc") is not None:
+            self.val_acc_history.append(metrics["val_acc"].item())
+
+        # Record loss
+        if metrics.get("train_loss_epoch") is not None:
+            self.train_loss_history.append(metrics["train_loss_epoch"].item())
+        elif metrics.get("train_loss") is not None:  # fallback
+            self.train_loss_history.append(metrics["train_loss"].item())
+
+        if metrics.get("val_loss") is not None:
+            self.val_loss_history.append(metrics["val_loss"].item())
 
     def on_train_end(self):
-        """Generate accuracy history plot after training completes"""
-        if self.visuals and self.train_acc_history and self.val_acc_history:
-            self.plot_accuracy_history()
+        """Generate accuracy & loss history plots after training completes"""
+        if self.visuals:
+            if self.train_acc_history and self.val_acc_history:
+                self.plot_accuracy_history()
+            if self.train_loss_history and self.val_loss_history:
+                self.plot_convergence_history()
+
+    def plot_convergence_history(self):
+        """Plot training vs validation loss & accuracy for convergence check"""
+        epochs = range(1, len(self.train_acc_history) + 1)
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+        # --- Loss plot ---
+        axes[0].plot(epochs, self.train_loss_history, 'bo-', label='Training Loss')
+        axes[0].plot(epochs, self.val_loss_history, 'ro-', label='Validation Loss')
+        axes[0].set_title('Training vs Validation Loss')
+        axes[0].set_xlabel('Epochs')
+        axes[0].set_ylabel('Loss')
+        axes[0].legend()
+        axes[0].grid(True)
+
+        # --- Accuracy plot ---
+        axes[1].plot(epochs, self.train_acc_history, 'bo-', label='Training Accuracy')
+        axes[1].plot(epochs, self.val_acc_history, 'go-', label='Validation Accuracy')
+        axes[1].set_title('Training vs Validation Accuracy')
+        axes[1].set_xlabel('Epochs')
+        axes[1].set_ylabel('Accuracy')
+        axes[1].set_ylim(0, 1.05)
+        axes[1].legend()
+        axes[1].grid(True)
+
+        plt.suptitle("Model Convergence")
+        plt.tight_layout()
+
+        if self.notebook:
+            plt.savefig("figures/convergence_history.png")
+        else:
+            plt.savefig("../saved/figures/convergence_history.png")
+
+        plt.show()
 
     def plot_accuracy_history(self):
         """Plot training and validation accuracy over epochs"""
@@ -271,6 +283,13 @@ class FusionNN(pl.LightningModule):
                 self.test_targets = gathered_targets.numpy()
                 self.test_probs = gathered_probs.numpy()
                 self.generate_visualizations()
+                # Save test accuracy/loss history for convergence comparison
+                if hasattr(self, "trainer"):
+                    metrics = self.trainer.callback_metrics
+                    if metrics.get("test_acc") is not None:
+                        self.test_acc_history.append(metrics["test_acc"].item())
+                    if metrics.get("test_loss") is not None:
+                        self.test_loss_history.append(metrics["test_loss"].item())
 
             # Clear stored data
             self.test_preds = []
@@ -355,6 +374,71 @@ class FusionNN(pl.LightningModule):
             plt.savefig("figures/probability_distribution.png")
         else:
             plt.savefig("../saved/figures/probability_distribution.png")
+        plt.show()
+
+        # 6. loss curves
+        epochs = range(1, len(self.train_loss_history) + 1)
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, self.train_loss_history, 'bo-', label="Training Loss")
+        if self.val_loss_history:
+            plt.plot(epochs, self.val_loss_history, 'ro-', label="Validation Loss")
+        if self.test_loss_history:
+            # Plot as flat line since test runs once
+            plt.axhline(y=self.test_loss_history[-1], color='g', linestyle='--', label="Test Loss")
+        plt.title("Loss Curves (Train/Val/Test)")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.grid(True)
+        if self.notebook:
+            plt.savefig("figures/loss_curves.png")
+        else:
+            plt.savefig("../saved/figures/loss_curves.png")
+        plt.show()
+
+        # 7. accuracy curves
+        epochs = range(1, len(self.train_acc_history) + 1)
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, self.train_acc_history, 'bo-', label="Training Accuracy")
+        if self.val_acc_history:
+            plt.plot(epochs, self.val_acc_history, 'go-', label="Validation Accuracy")
+        if self.test_acc_history:
+            plt.axhline(y=self.test_acc_history[-1], color='r', linestyle='--', label="Test Accuracy")
+        plt.title("Accuracy Curves (Train/Val/Test)")
+        plt.xlabel("Epochs")
+        plt.ylabel("Accuracy")
+        plt.ylim(0, 1.05)
+        plt.legend()
+        plt.grid(True)
+        if self.notebook:
+            plt.savefig("figures/accuracy_curves.png")
+        else:
+            plt.savefig("../saved/figures/accuracy_curves.png")
+        plt.show()
+
+    # 8. Precision Recall comparison (train v test)
+    def plot_precision_recall_comparison(self, y_true_train, y_probs_train, y_true_test, y_probs_test):
+        """Compare Precision-Recall curves for train vs test sets"""
+        from sklearn.metrics import precision_recall_curve, auc
+
+        precision_train, recall_train, _ = precision_recall_curve(y_true_train, y_probs_train)
+        precision_test, recall_test, _ = precision_recall_curve(y_true_test, y_probs_test)
+
+        auc_train = auc(recall_train, precision_train)
+        auc_test = auc(recall_test, precision_test)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(recall_train, precision_train, label=f"Train (AUC={auc_train:.2f})", color="blue")
+        plt.plot(recall_test, precision_test, label=f"Test (AUC={auc_test:.2f})", color="red")
+        plt.xlabel("Recall")
+        plt.ylabel("Precision")
+        plt.title("Precision-Recall Curves (Train vs Test)")
+        plt.legend()
+        plt.grid(True)
+        if self.notebook:
+            plt.savefig("figures/precision_recall_train_vs_test.png")
+        else:
+            plt.savefig("../saved/figures/precision_recall_train_vs_test.png")
         plt.show()
 
     def configure_optimizers(self):

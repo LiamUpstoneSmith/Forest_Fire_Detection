@@ -1,12 +1,14 @@
+import torch
 from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
 from src.models import CNN
 from src.data.dataset import *
+from collections import Counter
 
 def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
     torch._dynamo.config.suppress_errors = True
     torch._dynamo.config.disable = True
 
@@ -19,18 +21,52 @@ def train_cnn(config, train_dataloader, val_dataloader, test_dataloader):
     max_grad_norm = config.get("max_grad_norm")
 
     # Temporary classifier for training
-    classifier_head = nn.Linear(512, 1).to(device)
+    in_features = model.feature_refiner[-3].out_features  # 512 in your case
+    classifier_head = nn.Linear(in_features, 1).to(device)
 
     # Class imbalance handling
-    train_labels = [label for _, label in train_dataloader.dataset]
-    class_counts = [
-        train_labels.count(0),  # no_fire
-        train_labels.count(1)   # fire
-    ]
-    pos_weight = torch.tensor(
-        [class_counts[0] / max(1, class_counts[1])]
-    ).to(device)
+    ds = train_dataloader.dataset  # ThermalOnlyDataset wrapping AugmentedDataset -> FusionDataset
 
+    # Unwrap wrappers to get to the FusionDataset that stores labels
+    fusion_ds = None
+    # ThermalOnlyDataset(base=AugmentedDataset(base=FusionDataset))
+    if hasattr(ds, "base") and hasattr(ds.base, "base") and hasattr(ds.base.base, "labels"):
+        fusion_ds = ds.base.base
+    # AugmentedDataset(base=FusionDataset)
+    elif hasattr(ds, "base") and hasattr(ds.base, "labels"):
+        fusion_ds = ds.base
+    # Direct FusionDataset
+    elif hasattr(ds, "labels"):
+        fusion_ds = ds
+    else:
+        fusion_ds = None
+
+    if fusion_ds is not None:
+        # labels stored as ints in fusion_ds.labels
+        train_labels = [int(x) for x in fusion_ds.labels]
+        # if dataset is augmented, account for multiplier by scaling counts (optional)
+        mult = 1
+        if hasattr(ds, "base") and isinstance(ds.base, type(ds.base)) and hasattr(ds.base, "multiplier"):
+            # ds.base is AugmentedDataset when ThermalOnlyDataset.base is AugmentedDataset
+            try:
+                mult = int(ds.base.multiplier)
+            except Exception:
+                mult = 1
+        class_counts = [train_labels.count(0) * mult, train_labels.count(1) * mult]
+    else:
+        # Fallback (will trigger image I/O); still better than comprehension with tuple unpack.
+        # This fallback is kept defensive; in normal runs fusion_ds should be found.
+        train_labels = []
+        for item in ds:
+            # ThermalOnlyDataset returns (cnn_t, lbl)
+            lbl = item[-1]
+            try:
+                train_labels.append(int(lbl))
+            except Exception:
+                train_labels.append(int(lbl.item() if hasattr(lbl, "item") else lbl))
+        class_counts = [train_labels.count(0), train_labels.count(1)]
+
+    pos_weight = torch.tensor([float(class_counts[0]) / max(1.0, float(class_counts[1]))], device=device)
     print(f"Class counts: {class_counts}, pos_weight={pos_weight.item():.3f}")
 
     # Loss & optimizer

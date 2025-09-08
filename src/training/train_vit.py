@@ -5,10 +5,27 @@ from src.data.dataset import *
 from src.models import ViT
 from src.config import configs
 
+def compute_pos_weight(dataloader):
+    """Compute pos_weight = N_neg / N_pos for BCEWithLogitsLoss."""
+    pos, neg = 0, 0
+    for _, labels in dataloader:
+        labels = labels.view(-1)
+        pos += (labels == 1).sum().item()
+        neg += (labels == 0).sum().item()
+    if pos == 0:
+        raise ValueError("No positive samples in training set.")
+    return neg / pos
+
+
 def train_vit(config, train_dataloader, val_dataloader, test_dataloader):
     """
     Train ViT model with explicit dataloaders instead of a LightningDataModule.
     """
+    #Dynamically compute pos_weight from training set
+    pos_weight = compute_pos_weight(train_dataloader)
+    print("ViT pos_weight: ", pos_weight)
+    config['pos_weight'] = pos_weight
+
     model = ViT(config)
 
     checkpoint = ModelCheckpoint(
@@ -27,7 +44,7 @@ def train_vit(config, train_dataloader, val_dataloader, test_dataloader):
     trainer = pl.Trainer(
         max_epochs=config.get("num_epochs"),
         callbacks=[checkpoint, early_stop],
-        accelerator="cpu",
+        accelerator="auto",
         devices="auto",
         log_every_n_steps=10,
     )
@@ -44,8 +61,7 @@ def train_vit(config, train_dataloader, val_dataloader, test_dataloader):
         print("WARNING: No best checkpoint found. Using last-epoch model for testing.")
         best_model = model
 
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     best_model.to(device)
 
     # Lightning test loop (optional, still works)
