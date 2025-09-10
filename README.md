@@ -19,10 +19,9 @@ This project was made in collaberation for a research dissertation.
 
 ## Results
 
-|   | CNN | ViT  | Fusion |
-| ------------- | ------------- | ------------- | ------------- |
-| Accuracy | 0.993  | 1.0  | 0.984  |
-| Test Loss  | 0.000182  | 0.033627  | 0.051114  |
+| Model                     | Accuracy | Precision | Recall | F1 Score | Loss  |
+|---------------------------|----------|-----------|--------|----------|-------|
+| Proposed fusion CNN + ViT | 0.986    | 1.00      | 0.98   | 0.99     | 0.038 |
 
 ### Webpage
 This is a screenshot of what the FastAPI webpage looks like.
