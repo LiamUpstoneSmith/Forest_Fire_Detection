@@ -15,7 +15,7 @@ This project was made in collaberation for a research dissertation.
 - **Custom CNN Architecture**: Specialized feature extraction for thermal images
 
 ##  Model Architecture
-<img src="images/Multi_Model_FlowDiagram.png">
+
 
 ## Results
 
