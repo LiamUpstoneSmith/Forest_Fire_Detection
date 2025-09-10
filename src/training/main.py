@@ -98,14 +98,49 @@ def main():
     torch.save(fusion_model.state_dict(), "../saved/features/fusion_model_weights.pth")
     print("Fusion model weights saved.")
 
-    # Initialize predictor for deployment
-    predictor = FusionModelPredictor(fusion_model, vit_extractor, cnn_extractor)
-    print("Fire predictor initialized.")
-
     print(f"\nCNN Model Training/Testing time: {cnn_time/60:.2f} minutes.")
-    print(f"\nViT Model Training/Testing time: {vit_time/60:.2f} minutes.")
-    print(f"\nFusion Model Training/Testing time: {fusion_time/60:.2f} minutes.")
-    print(f"\nTotal time: {full_time/60:.2f} minutes.")
+    print(f"ViT Model Training/Testing time: {vit_time/60:.2f} minutes.")
+    print(f"Fusion Model Training/Testing time: {fusion_time/60:.2f} minutes.")
+    print(f"Total time: {full_time/60:.2f} minutes.")
 
 if __name__ == "__main__":
-    main()
+    # main()
+    # Define Dataloaders
+    dataloaders = prepareCombinedDataset()
+    # === Fusion Training ===
+    print("\n\nFusion Training Starting...\n")
+    # Load pretrained feature extractors
+    print("Loading pretrained feature extractors...")
+    vit_extractor = ViT.load_from_checkpoint(
+        "../saved/features/ViT_fire_feature_extractor.pth"
+    )
+    cnn_config = configs("cnn")
+    cnn_extractor = CNN(cnn_config)
+    cnn_extractor.load_state_dict(
+        torch.load("../saved/features/CNN_fire_feature_extractor.pth"),
+        strict=False
+    )
+    cnn_extractor.classifier = nn.Identity()
+
+    vit_extractor.eval()
+    cnn_extractor.eval()
+    print("Feature extractors ready.")
+
+    # Fusion model config
+    fusion_config = configs("fusion")
+
+    # Access fusion dataloaders
+    fusion_train, fusion_val, fusion_test = dataloaders["fusion"]
+
+    fusion_start = time.time()
+
+    # Train fusion model
+    print("\nTraining fusion model...")
+    fusion_model, results = train_fusion(
+        vit_extractor=vit_extractor,
+        cnn_extractor=cnn_extractor,
+        config=fusion_config,
+        train_dataloader=fusion_train,
+        val_dataloader=fusion_val,
+        test_dataloader=fusion_test
+    )

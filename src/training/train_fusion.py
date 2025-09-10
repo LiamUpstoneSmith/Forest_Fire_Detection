@@ -113,10 +113,10 @@ def train_fusion(vit_extractor, cnn_extractor, config, train_dataloader, val_dat
     y_train, p_train = evaluate_classification_report_with_probs(
         model, train_dataloader, device, split_name="Train"
     )
-    if val_dataloader:
-        evaluate_classification_report_with_probs(
-            model, val_dataloader, device, split_name="Validation"
-        )
+
+    evaluate_classification_report_with_probs(
+        model, val_dataloader, device, split_name="Validation"
+    )
     y_test, p_test = evaluate_classification_report_with_probs(
         model, test_dataloader, device, split_name="Test"
     )

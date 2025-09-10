@@ -199,7 +199,8 @@ def prepareCombinedDataset():
     base_train_dataset = FusionDataset(vit_train,cnn_train,train_labels,train_tf,train_mode=True)
     train_dataset = AugmentedDataset(base_train_dataset, multiplier=int(config.get("multiplier")))
     val_dataset   = FusionDataset(vit_val,cnn_val,val_labels,eval_tf,train_mode=False)
-    test_dataset  = FusionDataset(vit_test,cnn_test,test_labels,eval_tf,train_mode=False)
+    base_test_dataset = FusionDataset(vit_test,cnn_test, test_labels, train_tf, train_mode=True)
+    test_dataset = AugmentedDataset(base_test_dataset, multiplier=10)
 
     train_loader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True,num_workers=4,pin_memory=True)
     val_loader   = DataLoader(val_dataset,batch_size=batch_size,shuffle=False,num_workers=4,pin_memory=True)
