@@ -141,8 +141,9 @@ def print_split_statistics(loader, split_name: str):
         print(f"Class {cls}: {count} ({pct:.1f}%)")
 
 # --- Main ---
-def prepareCombinedDataset():
-    config = configs("data")
+def prepareCombinedDataset(config=None):
+    if config is None:
+        config = configs("data")
     vit_fire_dir = config["vit_fire_dir"]
     vit_non_fire_dir = config["vit_non_fire_dir"]
     cnn_fire_dir = config["cnn_fire_dir"]
