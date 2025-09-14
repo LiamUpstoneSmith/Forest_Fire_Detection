@@ -169,21 +169,13 @@ def prepareCombinedDataset(config=None):
     vit_paths_all,cnn_paths_all,labels_all,groups_all = zip(*combined)
     labels_all,groups_all = list(labels_all),list(groups_all)
 
-    dataset_size = len(labels_all)
-    if dataset_size<200:
-        warnings.warn(f"Dataset only {dataset_size} samples.")
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        train_idx,temp_idx = next(skf.split(range(dataset_size),labels_all))
-        mid=len(temp_idx)//2
-        val_idx,test_idx=temp_idx[:mid],temp_idx[mid:]
-    else:
-        train_idx,temp_idx = train_test_split(range(len(labels_all)),
-            test_size=0.3,stratify=labels_all,random_state=42)
-        temp_labels=[labels_all[i] for i in temp_idx]
-        temp_groups=[groups_all[i] for i in temp_idx]
-        sgkf=StratifiedGroupKFold(n_splits=2,shuffle=True,random_state=42)
-        val_idx,test_idx = next(sgkf.split(temp_idx,temp_labels,groups=temp_groups))
-        val_idx=[temp_idx[i] for i in val_idx]; test_idx=[temp_idx[i] for i in test_idx]
+    train_idx,temp_idx = train_test_split(range(len(labels_all)),
+        test_size=0.3,stratify=labels_all,random_state=42)
+    temp_labels=[labels_all[i] for i in temp_idx]
+    temp_groups=[groups_all[i] for i in temp_idx]
+    sgkf=StratifiedGroupKFold(n_splits=2,shuffle=True,random_state=42)
+    val_idx,test_idx = next(sgkf.split(temp_idx,temp_labels,groups=temp_groups))
+    val_idx=[temp_idx[i] for i in val_idx]; test_idx=[temp_idx[i] for i in test_idx]
 
     def subset(paths,idxs): return [paths[i] for i in idxs]
 
